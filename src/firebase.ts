@@ -1,6 +1,7 @@
 import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getFirestore } from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
+import { getAuth, GoogleAuthProvider } from 'firebase/auth';
 
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
@@ -23,6 +24,8 @@ const isConfigValid = !!(
 let app;
 let db: any = null;
 let storage: any = null;
+let auth: any = null;
+let googleProvider: any = null;
 let isFirebaseActive = false;
 
 if (isConfigValid) {
@@ -30,14 +33,16 @@ if (isConfigValid) {
     app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
     db = getFirestore(app);
     storage = getStorage(app);
+    auth = getAuth(app);
+    googleProvider = new GoogleAuthProvider();
     isFirebaseActive = true;
-    console.log('⚡ Firebase is successfully initialized and active.');
+    console.log('⚡ Firebase and Authentic Auth Services are successfully initialized and active.');
   } catch (error) {
     console.error('❌ Failed to initialize Firebase:', error);
   }
 } else {
-  console.log('ℹ️ Firebase configuration not found or invalid. Running in Local Storage Fallback Mode.');
+  console.log('ℹ️ Firebase configuration not found or invalid. Running in Local Storage Fallback Mode with Simulated Auth.');
 }
 
-export { db, storage, isFirebaseActive };
+export { db, storage, auth, googleProvider, isFirebaseActive };
 export default app;

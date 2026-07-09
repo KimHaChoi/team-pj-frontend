@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 
 export const AuthScreen: React.FC = () => {
-  const { login, signup, isLoading } = useAuth();
+  const { login, loginWithGoogle, signup, isLoading } = useAuth();
   
   const [isLoginMode, setIsLoginMode] = useState(true);
   const [email, setEmail] = useState('');
@@ -15,8 +15,18 @@ export const AuthScreen: React.FC = () => {
     setAuthError(null);
     try {
       await login(demoEmail, 'password123');
-    } catch (err) {
-      setAuthError('데모 계정 로그인 중 오류가 발생했습니다.');
+    } catch (err: any) {
+      setAuthError(err.message || '데모 계정 로그인 중 오류가 발생했습니다.');
+    }
+  };
+
+  const handleGoogleLoginClick = async () => {
+    setAuthError(null);
+    try {
+      await loginWithGoogle();
+    } catch (err: any) {
+      console.error(err);
+      setAuthError(err.message || 'Google 간편 로그인 연동 중 통신 에러가 발생했습니다.');
     }
   };
 
@@ -146,6 +156,28 @@ export const AuthScreen: React.FC = () => {
               ⚠️ {authError}
             </div>
           )}
+
+          {/* Premium Google OAuth Login Button */}
+          <button
+            type="button"
+            onClick={handleGoogleLoginClick}
+            disabled={isLoading}
+            className="w-full flex items-center justify-center gap-3 bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 font-extrabold text-xs py-3.5 rounded-2xl shadow-sm hover:shadow active:scale-[0.99] transition-all cursor-pointer"
+          >
+            <svg className="w-4 h-4" viewBox="0 0 24 24">
+              <path
+                fill="#EA4335"
+                d="M12.24 10.285V14.4h6.887c-.648 2.41-2.519 4.114-5.136 4.114A5.99 5.99 0 018.001 12.5a5.99 5.99 0 015.99-6.014c1.55 0 2.902.585 3.923 1.54l3.11-3.11C19.143 3.11 16.714 2 13.99 2 8.473 2 4 6.473 4 12s4.473 10 9.99 10c5.366 0 9.72-3.893 9.72-9.714 0-.585-.06-1.14-.18-1.686H12.24z"
+              />
+            </svg>
+            <span>Google 계정으로 계속하기</span>
+          </button>
+
+          <div className="relative flex py-1 items-center">
+            <div className="flex-grow border-t border-slate-100"></div>
+            <span className="flex-shrink mx-3 text-[10px] font-bold text-slate-300">또는 이메일 직접 입력</span>
+            <div className="flex-grow border-t border-slate-100"></div>
+          </div>
 
           <form onSubmit={handleSubmit} className="space-y-4">
             {/* Name Field (Only Signup) */}

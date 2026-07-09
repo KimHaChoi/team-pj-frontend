@@ -1,6 +1,30 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { dbService } from '../services/dbService';
 import type { Report } from '../types';
+import { GoogleMap, useJsApiLoader, OverlayView } from '@react-google-maps/api';
+
+// Premium Glassmorphic Eco-Dark Google Map JSON Styles
+const PREMIUM_MAP_STYLES = [
+  { "elementType": "geometry", "stylers": [{ "color": "#0f172a" }] }, // slate-900 background
+  { "elementType": "labels.text.stroke", "stylers": [{ "color": "#0f172a" }] },
+  { "elementType": "labels.text.fill", "stylers": [{ "color": "#64748b" }] },
+  { "featureType": "administrative", "elementType": "labels.text.fill", "stylers": [{ "color": "#94a3b8" }] },
+  { "featureType": "administrative.country", "elementType": "geometry.stroke", "stylers": [{ "color": "#334155" }] },
+  { "featureType": "administrative.land_parcel", "stylers": [{ "visibility": "off" }] },
+  { "featureType": "administrative.neighborhood", "stylers": [{ "visibility": "off" }] },
+  { "featureType": "landscape", "stylers": [{ "color": "#020617" }] }, // slate-950
+  { "featureType": "poi", "elementType": "geometry", "stylers": [{ "color": "#1e293b" }] },
+  { "featureType": "poi", "elementType": "labels.text.fill", "stylers": [{ "color": "#10b981" }, { "opacity": 0.45 }] }, // emerald accents
+  { "featureType": "poi.park", "elementType": "geometry", "stylers": [{ "color": "#064e3b" }] }, // deep dark emerald forest
+  { "featureType": "poi.park", "elementType": "labels.text.fill", "stylers": [{ "color": "#34d399" }] },
+  { "featureType": "road", "elementType": "geometry", "stylers": [{ "color": "#1e293b" }] }, // road surfaces
+  { "featureType": "road", "elementType": "geometry.stroke", "stylers": [{ "color": "#0f172a" }] },
+  { "featureType": "road", "elementType": "labels.text.fill", "stylers": [{ "color": "#94a3b8" }] },
+  { "featureType": "road.highway", "elementType": "geometry", "stylers": [{ "color": "#334155" }] },
+  { "featureType": "road.highway", "elementType": "geometry.stroke", "stylers": [{ "color": "#1e293b" }] },
+  { "featureType": "water", "stylers": [{ "color": "#172554" }] }, // deep ocean indigo
+  { "featureType": "water", "elementType": "labels.text.fill", "stylers": [{ "color": "#38bdf8" }] }
+];
 
 export const ReportMap: React.FC = () => {
   const [reports, setReports] = useState<Report[]>([]);
@@ -13,6 +37,20 @@ export const ReportMap: React.FC = () => {
   const [filterMinScore, setMinScore] = useState<number>(0);
   const [enableHeatmap, setEnableHeatmap] = useState<boolean>(true);
 
+  // Maps coordinates and setups
+  const [mapCenter, setMapCenter] = useState({ lat: 35.8342, lng: 128.4567 }); // Daegu Technopolis central fallback
+  const [mapInstance, setMapInstance] = useState<google.maps.Map | null>(null);
+
+  const googleMapsApiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || '';
+  
+  // Real-time API configuration checker
+  const isKeyValid = !!(googleMapsApiKey && googleMapsApiKey !== '' && !googleMapsApiKey.includes('YOUR_'));
+
+  const { isLoaded } = useJsApiLoader({
+    id: 'google-map-script',
+    googleMapsApiKey: googleMapsApiKey
+  });
+
   // Subscribe to real-time reports
   useEffect(() => {
     const unsub = dbService.listenReports((data) => {
@@ -20,6 +58,27 @@ export const ReportMap: React.FC = () => {
     });
     return () => unsub();
   }, []);
+
+  // Center Map smoothly using browser GPS on load
+  useEffect(() => {
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          const userCoords = {
+            lat: position.coords.latitude,
+            lng: position.coords.longitude
+          };
+          setMapCenter(userCoords);
+          if (mapInstance) {
+            mapInstance.panTo(userCoords);
+          }
+        },
+        () => {
+          console.log('Geolocation permission denied or not available. Using Daegu Central coordinates.');
+        }
+      );
+    }
+  }, [mapInstance]);
 
   const districts: { id: 'A구역' | 'B구역' | 'C구역' | 'D구역' | 'E구역'; name: string; desc: string; centerLat: number; centerLng: number }[] = [
     { id: 'A구역', name: '중구 (북서부 고업 산업지구)', desc: '공장 굴뚝 매연 배출 및 노후 화력 시설이 밀집한 특별 관리 대상 지역', centerLat: 35.8342, centerLng: 128.4567 },
@@ -29,22 +88,20 @@ export const ReportMap: React.FC = () => {
     { id: 'E구역', name: '남서부 외곽 전력 중계망', desc: '가로등 전원 공급망 및 기후 에너지 센서 송배전 타워 구역', centerLat: 35.8412, centerLng: 128.4312 },
   ];
 
-  // Helper to map 3D coordinate values to 2D UI offsets on our custom SVG layout (scaling coordinate range to SVG bounds)
-  // Latitude boundaries approximately [35.81, 35.86] -> Map height [80%, 20%]
-  // Longitude boundaries approximately [128.42, 128.48] -> Map width [15%, 85%]
-  const getCoordinatesOffset = (lat: number, lng: number) => {
-    const latMin = 35.8100;
-    const latMax = 35.8600;
-    const lngMin = 128.4200;
-    const lngMax = 128.4800;
+  // Smooth district pan trigger
+  const handleDistrictChange = (districtId: 'A구역' | 'B구역' | 'C구역' | 'D구역' | 'E구역') => {
+    setSelectedDistrict(districtId);
+    setActiveReport(null);
 
-    const top = 100 - ((lat - latMin) / (latMax - latMin)) * 80 - 10; // offset inside map box
-    const left = ((lng - lngMin) / (lngMax - lngMin)) * 70 + 15;
-
-    return {
-      top: `${Math.min(90, Math.max(10, top))}%`,
-      left: `${Math.min(90, Math.max(10, left))}%`
-    };
+    const match = districts.find(d => d.id === districtId);
+    if (match) {
+      const coords = { lat: match.centerLat, lng: match.centerLng };
+      setMapCenter(coords);
+      if (mapInstance) {
+        mapInstance.panTo(coords);
+        mapInstance.setZoom(15);
+      }
+    }
   };
 
   // Filtered reports
@@ -55,10 +112,9 @@ export const ReportMap: React.FC = () => {
     return true;
   });
 
-  // Calculate Environment Score for the selected district (B-2)
+  // Calculate Environment Score for the selected district
   const calculateEnvironmentScore = (districtId: 'A구역' | 'B구역' | 'C구역' | 'D구역' | 'E구역') => {
     const districtReports = reports.filter((r) => {
-      // rough assignment of coordinates to district bounds
       if (districtId === 'A구역') return r.lat >= 35.83 && r.lng <= 128.46;
       if (districtId === 'B구역') return r.lat >= 35.83 && r.lng > 128.46;
       if (districtId === 'C구역') return r.lat < 35.83 && r.lat >= 35.82 && r.lng >= 128.45;
@@ -70,7 +126,6 @@ export const ReportMap: React.FC = () => {
     const highPriorityCount = districtReports.filter(r => r.aiScore >= 75 && r.status !== 'RESOLVED' && r.isMeaningful).length;
     const resolvedCount = districtReports.filter(r => r.status === 'RESOLVED').length;
 
-    // Formula: environmentScore = 100 - unresolvedCount * 2 - highPriorityCount * 5 + resolvedCount * 1
     let score = 100 - (unresolvedCount * 2) - (highPriorityCount * 5) + (resolvedCount * 1);
     return Math.max(0, Math.min(100, Math.round(score)));
   };
@@ -105,15 +160,40 @@ export const ReportMap: React.FC = () => {
     }
   };
 
+  // Maps events callbacks
+  const onMapLoad = useCallback((map: google.maps.Map) => {
+    setMapInstance(map);
+  }, []);
+
+  const onMapUnmount = useCallback(() => {
+    setMapInstance(null);
+  }, []);
+
+  // Standard coordinate projection scaling formula for High Fidelity SVG fallback
+  const getCoordinatesOffsetFallback = (lat: number, lng: number) => {
+    const latMin = 35.8100;
+    const latMax = 35.8600;
+    const lngMin = 128.4200;
+    const lngMax = 128.4800;
+
+    const top = 100 - ((lat - latMin) / (latMax - latMin)) * 80 - 10;
+    const left = ((lng - lngMin) / (lngMax - lngMin)) * 70 + 15;
+
+    return {
+      top: `${Math.min(90, Math.max(10, top))}%`,
+      left: `${Math.min(90, Math.max(10, left))}%`
+    };
+  };
+
   return (
     <div className="max-w-6xl mx-auto px-4 py-5 pb-24 md:pb-8 space-y-5 animate-fadeIn">
       {/* Header HUD */}
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-3 bg-slate-900 text-white rounded-3xl p-5 shadow-md">
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-3 bg-slate-900 text-white rounded-3xl p-5 shadow-md border border-slate-800">
         <div>
-          <span className="text-[9px] font-extrabold tracking-wider text-emerald-400">CHALKAK GIS DASHBOARD</span>
+          <span className="text-[9px] font-extrabold tracking-wider text-emerald-400">CHALKAK DYNAMIC GIS MONITOR</span>
           <h2 className="text-lg font-black tracking-tight mt-0.5">실시간 환경·에너지 격자 관제 정보판</h2>
           <p className="text-[10px] text-slate-400 mt-0.5 leading-relaxed font-medium">
-            시민들이 제보한 위치 기반 신고 현황을 열지표(Heatmap) 및 구역 환경 종합 지수로 감시합니다.
+            실제 Google Maps 지도의 열지표(Heatmap) 및 구역 환경 종합 지수를 활용하여 전 국토 환경 오염원을 감시합니다.
           </p>
         </div>
 
@@ -146,9 +226,10 @@ export const ReportMap: React.FC = () => {
 
       {/* Primary Dashboard Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 items-start">
-        {/* Interactive map box - 2 cols on large screen */}
+        
+        {/* Interactive Google Map Canvas Box */}
         <div className="lg:col-span-2 bg-white rounded-3xl border border-slate-100 shadow-sm p-4 relative h-[450px] overflow-hidden flex flex-col">
-          {/* Geogrid lines */}
+          {/* Geogrid lines layout */}
           <div className="absolute inset-0 bg-[radial-gradient(#cbd5e1_1px,transparent_1px)] [background-size:16px_16px] opacity-40 pointer-events-none" />
 
           {/* Quick HUD filter toggles */}
@@ -191,84 +272,156 @@ export const ReportMap: React.FC = () => {
             </div>
           </div>
 
-          {/* Map canvas containing the SVG and absolute marker pins */}
+          {/* Actual Google Maps Rendering or Elegant Fallback System */}
           <div className="relative flex-1 bg-sky-50/40 border border-sky-100/60 rounded-2xl overflow-hidden shadow-inner">
-            {/* Districts overlay (SVG contours as simulated map) */}
-            <div className="absolute inset-0 flex items-center justify-center p-6 select-none opacity-40">
-              <svg className="w-full h-full text-slate-300" viewBox="0 0 400 300" fill="none" stroke="currentColor">
-                <path d="M50,150 Q100,50 200,80 T350,60" strokeWidth="2" strokeDasharray="4,4" />
-                <path d="M80,250 Q180,220 280,280 T380,220" strokeWidth="2" strokeDasharray="4,4" />
-                <rect x="30" y="40" width="120" height="90" rx="20" fill="currentColor" fillOpacity="0.1" />
-                <rect x="250" y="30" width="120" height="90" rx="20" fill="currentColor" fillOpacity="0.1" />
-                <circle cx="200" cy="150" r="55" fill="currentColor" fillOpacity="0.1" />
-                <rect x="240" y="170" width="130" height="100" rx="20" fill="currentColor" fillOpacity="0.1" />
-                <rect x="40" y="170" width="110" height="100" rx="20" fill="currentColor" fillOpacity="0.1" />
-              </svg>
-            </div>
+            {isKeyValid && isLoaded ? (
+              // 1. Google Maps Core Canvas
+              <GoogleMap
+                mapContainerStyle={{ width: '100%', height: '100%' }}
+                center={mapCenter}
+                zoom={14}
+                onLoad={onMapLoad}
+                onUnmount={onMapUnmount}
+                options={{
+                  styles: PREMIUM_MAP_STYLES,
+                  disableDefaultUI: false,
+                  zoomControl: true,
+                  mapTypeControl: true,
+                  scaleControl: true,
+                  streetViewControl: false,
+                  fullscreenControl: true
+                }}
+              >
+                {/* HTML Custom Glowing Markers via OverlayView for ultimate CSS visuals */}
+                {filteredReports.map((report) => {
+                  const isSelected = activeReport?.id === report.id;
+                  const showHeatGlow = enableHeatmap && report.status !== 'RESOLVED' && report.status !== 'REJECTED';
+                  
+                  let heatColorClass = 'from-rose-500/20 to-transparent';
+                  let sizeClass = 'w-10 h-10';
+                  if (report.aiScore >= 75) {
+                    heatColorClass = 'from-rose-600/25 via-rose-500/10 to-transparent';
+                    sizeClass = 'w-16 h-16';
+                  } else if (report.aiScore >= 40) {
+                    heatColorClass = 'from-orange-500/20 via-orange-400/5 to-transparent';
+                    sizeClass = 'w-12 h-12';
+                  }
 
-            {/* Label texts on background districts */}
-            <div className="absolute top-[18%] left-[20%] text-[10px] font-black text-slate-400">중구 (A구역)</div>
-            <div className="absolute top-[18%] left-[70%] text-[10px] font-black text-slate-400">동구 (B구역)</div>
-            <div className="absolute top-[48%] left-[40%] text-[10px] font-black text-slate-400">중앙생태공원 (C구역)</div>
-            <div className="absolute top-[75%] left-[65%] text-[10px] font-black text-slate-400">에코하우징 (D구역)</div>
-            <div className="absolute top-[75%] left-[15%] text-[10px] font-black text-slate-400">외곽송배망 (E구역)</div>
+                  return (
+                    <OverlayView
+                      key={report.id}
+                      position={{ lat: report.lat, lng: report.lng }}
+                      mapPaneName={OverlayView.OVERLAY_MOUSE_TARGET}
+                    >
+                      <div className="absolute z-20 -translate-x-1/2 -translate-y-1/2 transition-transform duration-200">
+                        {/* Glowing heat wave */}
+                        {showHeatGlow && (
+                          <div className={`absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 bg-radial rounded-full animate-pulse pointer-events-none ${heatColorClass} ${sizeClass}`} />
+                        )}
 
-            {/* Real-time map pins representing filtered reports */}
-            {filteredReports.map((report) => {
-              const offsets = getCoordinatesOffset(report.lat, report.lng);
-              const isSelected = activeReport?.id === report.id;
-
-              // Heatmap style settings
-              const showHeatGlow = enableHeatmap && report.status !== 'RESOLVED' && report.status !== 'REJECTED';
-              let heatColorClass = 'from-rose-500/20 to-transparent';
-              let sizeClass = 'w-10 h-10';
-              if (report.aiScore >= 75) {
-                heatColorClass = 'from-rose-600/25 via-rose-500/10 to-transparent';
-                sizeClass = 'w-16 h-16';
-              } else if (report.aiScore >= 40) {
-                heatColorClass = 'from-orange-500/20 via-orange-400/5 to-transparent';
-                sizeClass = 'w-12 h-12';
-              }
-
-              return (
-                <div
-                  key={report.id}
-                  className="absolute z-20 -translate-x-1/2 -translate-y-1/2 transition-transform duration-200"
-                  style={{ top: offsets.top, left: offsets.left }}
-                >
-                  {/* Glowing heat wave */}
-                  {showHeatGlow && (
-                    <div className={`absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 bg-radial rounded-full animate-pulse pointer-events-none ${heatColorClass} ${sizeClass}`} />
-                  )}
-
-                  {/* Marker Button */}
-                  <button
-                    onClick={() => setActiveReport(report)}
-                    type="button"
-                    className={`relative flex items-center justify-center w-7 h-7 rounded-full bg-white border shadow-md active:scale-95 transition-all cursor-pointer ${
-                      isSelected 
-                        ? 'border-slate-900 scale-125 ring-4 ring-slate-900/10 z-30' 
-                        : report.aiScore >= 75 
-                        ? 'border-rose-400' 
-                        : 'border-slate-100'
-                    }`}
-                  >
-                    <span className="text-sm select-none">
-                      {getCategoryEmoji(report.category)}
-                    </span>
-                    {/* Small urgency badge on marker top right */}
-                    {report.aiScore >= 75 && report.status !== 'RESOLVED' && (
-                      <span className="absolute -top-1 -right-1 flex h-2.5 w-2.5 rounded-full bg-rose-600 animate-ping" />
-                    )}
-                  </button>
+                        {/* Interactive Marker Button inside Google Maps */}
+                        <button
+                          onClick={() => setActiveReport(report)}
+                          type="button"
+                          className={`relative flex items-center justify-center w-7 h-7 rounded-full bg-white border shadow-md active:scale-95 transition-all cursor-pointer ${
+                            isSelected 
+                              ? 'border-slate-950 scale-125 ring-4 ring-slate-950/20 z-30' 
+                              : report.aiScore >= 75 
+                              ? 'border-rose-500' 
+                              : 'border-slate-100'
+                          }`}
+                        >
+                          <span className="text-sm select-none">
+                            {getCategoryEmoji(report.category)}
+                          </span>
+                          
+                          {/* Pulsing Alert dot on Marker top-right */}
+                          {report.aiScore >= 75 && report.status !== 'RESOLVED' && (
+                            <span className="absolute -top-1 -right-1 flex h-2.5 w-2.5 rounded-full bg-rose-600 animate-ping" />
+                          )}
+                        </button>
+                      </div>
+                    </OverlayView>
+                  );
+                })}
+              </GoogleMap>
+            ) : (
+              // 2. High-Fidelity SVG Fallback System (Ensuring 100% demo stability offline)
+              <div className="absolute inset-0 bg-slate-950 flex flex-col justify-end">
+                {/* Simulated Geogrid Overlay */}
+                <div className="absolute inset-0 flex items-center justify-center p-6 select-none opacity-20">
+                  <svg className="w-full h-full text-slate-400" viewBox="0 0 400 300" fill="none" stroke="currentColor">
+                    <path d="M50,150 Q100,50 200,80 T350,60" strokeWidth="2" strokeDasharray="4,4" />
+                    <path d="M80,250 Q180,220 280,280 T380,220" strokeWidth="2" strokeDasharray="4,4" />
+                    <rect x="30" y="40" width="120" height="90" rx="20" fill="currentColor" fillOpacity="0.1" />
+                    <rect x="250" y="30" width="120" height="90" rx="20" fill="currentColor" fillOpacity="0.1" />
+                    <circle cx="200" cy="150" r="55" fill="currentColor" fillOpacity="0.1" />
+                    <rect x="240" y="170" width="130" height="100" rx="20" fill="currentColor" fillOpacity="0.1" />
+                    <rect x="40" y="170" width="110" height="100" rx="20" fill="currentColor" fillOpacity="0.1" />
+                  </svg>
                 </div>
-              );
-            })}
+
+                {/* Map Labels */}
+                <div className="absolute top-[18%] left-[20%] text-[10px] font-black text-slate-500">중구 (A구역)</div>
+                <div className="absolute top-[18%] left-[70%] text-[10px] font-black text-slate-500">동구 (B구역)</div>
+                <div className="absolute top-[48%] left-[40%] text-[10px] font-black text-slate-500">중앙생태공원 (C구역)</div>
+                <div className="absolute top-[75%] left-[65%] text-[10px] font-black text-slate-500">에코하우징 (D구역)</div>
+                <div className="absolute top-[75%] left-[15%] text-[10px] font-black text-slate-500">외곽송배망 (E구역)</div>
+
+                {/* Fallback Marker Pins Rendering */}
+                {filteredReports.map((report) => {
+                  const offsets = getCoordinatesOffsetFallback(report.lat, report.lng);
+                  const isSelected = activeReport?.id === report.id;
+                  const showHeatGlow = enableHeatmap && report.status !== 'RESOLVED' && report.status !== 'REJECTED';
+
+                  let heatColorClass = 'from-rose-500/20 to-transparent';
+                  let sizeClass = 'w-10 h-10';
+                  if (report.aiScore >= 75) {
+                    heatColorClass = 'from-rose-600/25 via-rose-500/10 to-transparent';
+                    sizeClass = 'w-16 h-16';
+                  }
+
+                  return (
+                    <div
+                      key={report.id}
+                      className="absolute z-20 -translate-x-1/2 -translate-y-1/2"
+                      style={{ top: offsets.top, left: offsets.left }}
+                    >
+                      {showHeatGlow && (
+                        <div className={`absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 bg-radial rounded-full animate-pulse pointer-events-none ${heatColorClass} ${sizeClass}`} />
+                      )}
+
+                      <button
+                        onClick={() => setActiveReport(report)}
+                        className={`relative flex items-center justify-center w-7 h-7 rounded-full bg-slate-900 border shadow-md active:scale-95 transition-all cursor-pointer ${
+                          isSelected ? 'border-emerald-400 scale-125 ring-4 ring-emerald-500/15' : 'border-slate-800'
+                        }`}
+                      >
+                        <span className="text-sm">{getCategoryEmoji(report.category)}</span>
+                      </button>
+                    </div>
+                  );
+                })}
+
+                {/* Top Overlay Banner for missing credentials */}
+                <div className="absolute top-4 left-4 right-4 bg-slate-900/90 backdrop-blur-md border border-slate-800 rounded-2xl p-3 shadow-md flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <span className="text-lg">ℹ️</span>
+                    <div>
+                      <h4 className="text-[10px] font-extrabold text-amber-400">Google Maps API 키 미등록 (대체 시뮬레이션 작동 중)</h4>
+                      <p className="text-[9px] text-slate-400 leading-normal leading-relaxed">
+                        `.env` 파일에 `VITE_GOOGLE_MAPS_API_KEY` 등록 시, 미래지향적 다크-에메랄드 테마의 실시간 구글맵이 연동됩니다.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* SCALE bar HUD */}
           <div className="mt-2 text-[9px] text-slate-400 font-bold font-mono uppercase flex justify-between items-center bg-slate-50/50 p-2 rounded-xl">
-            <span>COORDINATE SYSTEM: EPSG:5179 (DAEGU SPATIAL)</span>
+            <span>COORDINATE SYSTEM: WGS84 (STANDARD LIVE GPS)</span>
             <span>SCALE BAR 1:15,000</span>
           </div>
         </div>
@@ -297,7 +450,7 @@ export const ReportMap: React.FC = () => {
 
             {/* Dial gauge indicator */}
             <div className="flex items-center gap-5 bg-slate-50/80 p-4 rounded-2xl border border-slate-100/50">
-              <div className="relative flex items-center justify-center w-16 h-16 rounded-full border-4 border-slate-100 bg-white">
+              <div className="relative flex items-center justify-center w-16 h-16 rounded-full border-4 border-slate-100 bg-white shadow-inner">
                 <span className={`text-base font-black ${
                   currentEnvironmentScore >= 80 ? 'text-emerald-600' : currentEnvironmentScore >= 50 ? 'text-amber-600' : 'text-rose-600'
                 }`}>
@@ -317,10 +470,7 @@ export const ReportMap: React.FC = () => {
               {districts.map(d => (
                 <button
                   key={d.id}
-                  onClick={() => {
-                    setSelectedDistrict(d.id);
-                    setActiveReport(null); // clear popups
-                  }}
+                  onClick={() => handleDistrictChange(d.id)}
                   className={`py-2 text-[10px] font-extrabold rounded-xl border text-center cursor-pointer transition-all ${
                     selectedDistrict === d.id
                       ? 'border-emerald-500 bg-emerald-600 text-white shadow-sm'
@@ -359,7 +509,7 @@ export const ReportMap: React.FC = () => {
               </div>
 
               <div className="rounded-xl overflow-hidden h-28 border border-white/10 relative">
-                <img src={activeReport.imageUrl} alt=" 증빙" className="w-full h-full object-cover" />
+                <img src={activeReport.imageUrl} alt="증빙" className="w-full h-full object-cover" />
                 <div className="absolute bottom-2 right-2 bg-rose-600 border border-rose-500 text-[10px] text-white font-extrabold px-2 py-0.5 rounded-lg shadow">
                   AI {activeReport.aiScore}점
                 </div>
@@ -387,7 +537,7 @@ export const ReportMap: React.FC = () => {
               )}
 
               <div className="text-[9px] text-slate-500 font-extrabold font-mono text-right pt-1 flex justify-between">
-                <span>📍 {activeReport.address}</span>
+                <span>📍 {activeReport.address || '대구광역시 달성군'}</span>
                 <span>{new Date(activeReport.createdAt).toLocaleDateString()}</span>
               </div>
             </div>
