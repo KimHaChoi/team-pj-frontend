@@ -34,7 +34,7 @@ const App: React.FC = () => {
 
   return (
     <EcoCityProvider>
-      <div className="min-h-screen bg-zinc-950 text-zinc-100 flex flex-col justify-between selection:bg-emerald-500/30 selection:text-emerald-400">
+      <div className="min-h-screen bg-slate-50 text-slate-800 flex flex-col justify-between selection:bg-emerald-100 selection:text-emerald-700">
         
         {/* Navigation control header */}
         <Header activeTab={activeTab} setActiveTab={setActiveTab} />
@@ -45,13 +45,13 @@ const App: React.FC = () => {
         </main>
 
         {/* Footer */}
-        <footer className="w-full border-t border-zinc-900/60 bg-zinc-950 py-5 text-center text-xs font-semibold text-zinc-600 font-mono tracking-wider">
+        <footer className="w-full border-t border-slate-200 bg-white/70 py-5 text-center text-xs font-semibold text-slate-400 font-mono tracking-wider backdrop-blur-md">
           <div className="mx-auto max-w-7xl px-4 flex flex-col sm:flex-row items-center justify-between gap-2.5">
             <span>© 2026 ECOCITY CONTROL CONSOLE. ALL RIGHTS RESERVED.</span>
             <span className="flex items-center gap-1.5">
               <span>DESIGNED FOR DGSW HACKATHON</span>
-              <span className="w-1 h-1 rounded-full bg-emerald-500" />
-              <span className="text-emerald-500/80">TEAM PJ FRONTEND</span>
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+              <span className="text-emerald-600">TEAM PJ FRONTEND</span>
             </span>
           </div>
         </footer>
