@@ -6,316 +6,247 @@ import {
   Flame, 
   AlertTriangle, 
   TrendingUp, 
-  Activity,
-  Award
+  Info,
+  ShieldCheck
 } from 'lucide-react';
 
 export const Dashboard: React.FC = () => {
-  const { stats, facilities, reports, isLoading } = useEcoCity();
+  const { stats, reports, facilities } = useEcoCity();
 
-  if (isLoading) {
-    return (
-      <div className="flex h-[60vh] items-center justify-center">
-        <div className="h-12 w-12 animate-spin rounded-full border-4 border-emerald-500 border-t-transparent" />
-      </div>
-    );
-  }
+  // Filter out completed reports for the live feed
+  const activeReports = reports.filter((r) => r.status !== '처리 완료');
 
-  // Calculate live District-by-District Production vs Consumption
-  const districts: ('A구역' | 'B구역' | 'C구역' | 'D구역' | 'E구역')[] = ['A구역', 'B구역', 'C구역', 'D구역', 'E구역'];
-  const districtData = districts.map((dist) => {
-    const distFacs = facilities.filter(f => f.location === dist);
-    const prod = distFacs.reduce((sum, f) => sum + f.energyProduction, 0);
-    const cons = distFacs.reduce((sum, f) => sum + f.energyConsumption, 0);
-    return { name: dist, production: prod, consumption: cons };
-  });
-
-  // Calculate maximum value for chart scaling (min 200 to prevent zero division)
-  const maxChartVal = Math.max(
-    ...districtData.flatMap(d => [d.production, d.consumption]),
-    200
-  );
-
-  // Get active alerts (unresolved reports)
-  const activeAlerts = reports.filter(r => r.status !== '처리 완료').slice(0, 4);
-
-  // Determine Eco Score level feedback
-  const getEcoScoreFeedback = (score: number) => {
-    if (score >= 80) return { label: '우수 (EXCELLENT)', desc: '지속 가능한 완벽한 친환경 상태', color: 'text-emerald-600' };
-    if (score >= 60) return { label: '양호 (GOOD)', desc: '탄소 배출 및 에너지 효율이 무난함', color: 'text-cyan-600' };
-    if (score >= 40) return { label: '경고 (WARNING)', desc: '일부 구역 화력/공장 오염 조치 필요', color: 'text-amber-600' };
-    return { label: '위험 (DANGER)', desc: '과도한 전력 낭비 및 심각한 환경 오염 상태', color: 'text-rose-600' };
+  // Eco Score status descriptors (Administrative vocabulary)
+  const getEcoScoreStatus = (score: number) => {
+    if (score >= 80) return { label: '우수 (EXCELLENT)', color: 'text-emerald-600', bg: 'bg-emerald-50 border-emerald-200' };
+    if (score >= 55) return { label: '보통 (NORMAL)', color: 'text-cyan-600', bg: 'bg-cyan-50 border-cyan-200' };
+    return { label: '경고 (WARNING)', color: 'text-rose-600', bg: 'bg-rose-50 border-rose-200' };
   };
 
-  const scoreFeedback = getEcoScoreFeedback(stats.ecoScore);
+  const scoreStatus = getEcoScoreStatus(stats.ecoScore);
 
-  // SVG Gauge calculations
-  const radius = 60;
-  const strokeWidth = 10;
+  // Calculate circular stroke offset
+  const radius = 50;
   const circumference = 2 * Math.PI * radius;
   const strokeDashoffset = circumference - (stats.ecoScore / 100) * circumference;
 
   return (
-    <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8 space-y-8 animate-fadeIn">
+    <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8 space-y-6 animate-fadeIn">
       
-      {/* Top Banner section */}
-      <div className="flex flex-col gap-6 md:flex-row md:items-center md:justify-between">
+      {/* 1. 공공기관 공식 운영 안내 배너 (Operational Announcement Banner) */}
+      <div className="p-4 rounded-lg bg-blue-50 border border-blue-200 flex items-start gap-3.5 shadow-sm text-xs font-semibold text-[#0a3054] leading-relaxed">
+        <Info className="w-5 h-5 text-[#0284c7] flex-shrink-0 mt-0.5" />
         <div>
-          <h2 className="text-2xl font-display font-extrabold tracking-tight text-slate-800 sm:text-3xl">
-            도시 통합 관제 대시보드
-          </h2>
-          <p className="mt-1.5 text-xs text-slate-500 leading-relaxed max-w-xl font-medium">
-            복원 구역의 실시간 전력 사용량 및 공공 오염도를 요약한 메인 대시보드입니다. 시뮬레이션 결과 및 실시간 신고 데이터가 연동됩니다.
-          </p>
+          <span className="block font-bold mb-0.5">📢 지자체 운영 안내:</span>
+          <span>
+            본 시스템은 『노 휴먼스랜드』 폐지 조치에 의거하여, 대한민국 전역 복원 구역의 실시간 환경오염 민원 수렴 및 도시 신재생 전력 가동 지표를 통합 조치하는 지자체 연동 공식 대국민 서비스 포털입니다. 시민 여러분의 안전하고 정밀한 환경 제보가 즉시 반영되어 행정 처리가 개시됩니다.
+          </span>
         </div>
       </div>
 
-      {/* Grid: Eco Score Gauge + KPI Stats */}
+      {/* 2. 대국민 주요 요약 통계 (KPI Stats Block) */}
+      <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
+        
+        <StatCard
+          title="총 신재생 전력 생산량"
+          value={`${stats.totalProduction} MW`}
+          description="태양광 및 풍력 친환경 발전기 합산"
+          icon={<Zap className="w-5 h-5 text-[#0284c7]" />}
+          progress={Math.min(100, (stats.totalProduction / 1500) * 100)}
+          color="bg-[#0284c7]"
+        />
+
+        <StatCard
+          title="도시 총 전력 소비량"
+          value={`${stats.totalConsumption} MW`}
+          description="공장 및 스마트 아파트 단지 소비 합계"
+          icon={<Flame className="w-5 h-5 text-amber-600" />}
+          progress={Math.min(100, (stats.totalConsumption / 1500) * 100)}
+          color="bg-amber-600"
+        />
+
+        <StatCard
+          title="도시 종합 환경 오염도"
+          value={`${stats.avgPollution.toFixed(1)}%`}
+          description="탄소 배출 및 매연 가스 가중치 평균"
+          icon={<AlertTriangle className="w-5 h-5 text-rose-600" />}
+          progress={stats.avgPollution}
+          color="bg-rose-500"
+        />
+
+        <StatCard
+          title="미해결 환경 민원"
+          value={`${activeReports.length} 건`}
+          description="시민이 실시간 제보하여 조치 중인 상태"
+          icon={<TrendingUp className="w-5 h-5 text-indigo-600" />}
+          progress={Math.min(100, (activeReports.length / 10) * 100)}
+          color="bg-indigo-600"
+        />
+
+      </div>
+
+      {/* 3. 메인 계측기 및 구역 현황 격자 (Dashboard Panels) */}
       <div className="grid gap-6 lg:grid-cols-3">
         
-        {/* Left Column: Big Eco Score Gauge */}
-        <div className="relative overflow-hidden rounded-2xl border border-slate-200/80 bg-white/70 p-6 flex flex-col items-center justify-center text-center backdrop-blur-md shadow-sm">
-          <div className="absolute -left-10 -bottom-10 h-32 w-32 rounded-full bg-emerald-500/5 filter blur-3xl" />
-          
-          <h3 className="text-xs font-mono font-bold tracking-wider text-slate-400 uppercase">
-            종합 친환경 지수 (ECO SCORE)
-          </h3>
+        {/* Left Column: 종합 친환경 지수 Gauge (1 Col) */}
+        <div className="portal-card p-6 flex flex-col justify-between items-center relative overflow-hidden h-[380px]">
+          <div className="w-full text-left pb-3 border-b border-slate-200">
+            <h3 className="text-xs font-bold text-slate-400 font-mono tracking-wider uppercase">
+              GENERAL PERFORMANCE INDICATOR
+            </h3>
+            <h4 className="text-base font-bold text-slate-800 mt-1">종합 친환경 지수 (Eco Score)</h4>
+          </div>
 
-          {/* SVG Circular Gauge */}
-          <div className="relative my-6 flex items-center justify-center">
-            <svg className="h-40 w-40 transform -rotate-90">
-              {/* Back track */}
+          {/* Clean Public circular gauge */}
+          <div className="relative flex items-center justify-center my-6">
+            <svg className="w-40 h-40 transform -rotate-90">
+              {/* Slate background track */}
               <circle
                 cx="80"
                 cy="80"
-                r={radius}
-                stroke="#f1f5f9" /* slate-100 */
-                strokeWidth={strokeWidth}
-                fill="transparent"
+                r="70"
+                className="stroke-slate-100 fill-none"
+                strokeWidth="12"
               />
-              {/* Active track */}
+              {/* Solid Blue/Emerald progress fill */}
               <circle
                 cx="80"
                 cy="80"
-                r={radius}
-                stroke="url(#ecoGradient)"
-                strokeWidth={strokeWidth}
+                r="70"
+                className="fill-none transition-all duration-700 ease-out"
+                strokeWidth="12"
                 strokeDasharray={circumference}
                 strokeDashoffset={strokeDashoffset}
                 strokeLinecap="round"
-                fill="transparent"
-                className="transition-all duration-1000 ease-out"
+                stroke={stats.ecoScore >= 80 ? '#10b981' : stats.ecoScore >= 55 ? '#0284c7' : '#f43f5e'}
               />
-              {/* Gradients */}
-              <defs>
-                <linearGradient id="ecoGradient" x1="0%" y1="0%" x2="100%" y2="100%">
-                  <stop offset="0%" stopColor="#06b6d4" /> {/* Cyan */}
-                  <stop offset="100%" stopColor="#10b981" /> {/* Emerald */}
-                </linearGradient>
-              </defs>
             </svg>
             
-            {/* Center value */}
-            <div className="absolute flex flex-col items-center">
-              <span className="text-4xl font-display font-extrabold tracking-tight text-slate-800">
-                {stats.ecoScore}
-              </span>
-              <span className="text-[9px] font-bold text-slate-400 tracking-wider">/ 100 PTS</span>
+            {/* Center value label */}
+            <div className="absolute text-center">
+              <span className="block text-4xl font-extrabold text-slate-900 tracking-tight">{stats.ecoScore}</span>
+              <span className="text-[10px] text-slate-400 font-extrabold tracking-widest uppercase">SCORE</span>
             </div>
           </div>
 
-          <div className="space-y-1">
-            <p className={`text-sm font-extrabold tracking-wide ${scoreFeedback.color}`}>
-              {scoreFeedback.label}
-            </p>
-            <p className="text-xs text-slate-500 px-4 leading-relaxed font-semibold">
-              {scoreFeedback.desc}
-            </p>
-          </div>
-
-          {/* Score breakdown metrics footer */}
-          <div className="mt-6 w-full grid grid-cols-2 gap-2 pt-4 border-t border-slate-100 text-[10px] font-semibold text-slate-400 font-mono">
-            <div className="border-r border-slate-100">
-              <span className="block text-slate-700 font-bold">{facilities.filter(f => f.isAging).length}개</span>
-              노후 설비
-            </div>
-            <div>
-              <span className="block text-slate-700 font-bold">{stats.unresolvedReports}건</span>
-              미해결 민원
-            </div>
+          {/* Descriptive Government rating banner */}
+          <div className={`w-full py-2.5 px-4 rounded border text-center text-xs font-bold ${scoreStatus.bg} ${scoreStatus.color}`}>
+            행정 평가 등급: {scoreStatus.label}
           </div>
         </div>
 
-        {/* Right Column: Key KPI Stats Cards Grid */}
-        <div className="lg:col-span-2 grid gap-4 sm:grid-cols-2">
-          <StatCard
-            title="총 전력 생산량"
-            value={`${stats.totalProduction} MW`}
-            icon={<Zap className="w-5 h-5" />}
-            color="green"
-            subText="친환경 및 기성 발전량 합산"
-            progress={(stats.totalProduction / maxChartVal) * 100}
-          />
-          <StatCard
-            title="총 전력 소비량"
-            value={`${stats.totalConsumption} MW`}
-            icon={<TrendingUp className="w-5 h-5" />}
-            color="blue"
-            subText={`수요 충족률: ${Math.round((stats.totalConsumption / (stats.totalProduction || 1)) * 100)}%`}
-            progress={(stats.totalConsumption / stats.totalProduction) * 100}
-          />
-          <StatCard
-            title="도시 평균 오염도"
-            value={`${stats.avgPollution}%`}
-            icon={<Flame className="w-5 h-5" />}
-            color={stats.avgPollution > 50 ? 'red' : stats.avgPollution > 25 ? 'yellow' : 'cyan'}
-            subText="대기 오염 및 미세먼지 수치"
-            progress={stats.avgPollution}
-          />
-          <StatCard
-            title="미해결 환경 민원"
-            value={`${stats.unresolvedReports} 건`}
-            icon={<AlertTriangle className="w-5 h-5" />}
-            color={stats.unresolvedReports > 0 ? 'red' : 'green'}
-            subText={`총 민원: ${stats.totalReports}건 중 미완료`}
-            progress={(stats.unresolvedReports / (stats.totalReports || 1)) * 100}
-          />
+        {/* Right Columns: 구역별 전력 수급 및 민원 일람 (2 Cols) */}
+        <div className="lg:col-span-2 portal-card p-6 flex flex-col justify-between h-[380px]">
+          <div className="w-full pb-3 border-b border-slate-200 flex justify-between items-center">
+            <div>
+              <h3 className="text-xs font-bold text-slate-400 font-mono tracking-wider uppercase">
+                DISTRICT OPERATION LEDGER
+              </h3>
+              <h4 className="text-base font-bold text-slate-800 mt-1">구역별 실시간 에너지 전력 대장</h4>
+            </div>
+            <span className="text-[10px] text-slate-400 font-mono font-bold">5대 특별 지구 관제</span>
+          </div>
+
+          {/* Real table ledger representation */}
+          <div className="flex-1 my-4 overflow-y-auto pr-1">
+            <table className="portal-table w-full text-xs text-left">
+              <thead>
+                <tr>
+                  <th className="p-3">관할 구획</th>
+                  <th className="p-3">친환경 전력 생산</th>
+                  <th className="p-3">소비 전력</th>
+                  <th className="p-3">환경 오염 지수</th>
+                  <th className="p-3">가동 설비</th>
+                </tr>
+              </thead>
+              <tbody className="font-semibold text-slate-600">
+                {['A구역', 'B구역', 'C구역', 'D구역', 'E구역'].map((dist) => {
+                  const distFacilities = facilities.filter(f => f.location === dist);
+                  const prod = distFacilities.reduce((sum, f) => sum + f.energyProduction, 0);
+                  const cons = distFacilities.reduce((sum, f) => sum + f.energyConsumption, 0);
+                  const activePollution = distFacilities.reduce((sum, f) => sum + f.pollution, 0) / (distFacilities.length || 1);
+
+                  return (
+                    <tr key={dist} className="hover:bg-slate-50 transition-colors">
+                      <td className="p-3 font-bold text-slate-800">{dist}</td>
+                      <td className="p-3 text-emerald-600">{prod} MW</td>
+                      <td className="p-3 text-amber-600">{cons} MW</td>
+                      <td className="p-3">
+                        <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${
+                          activePollution > 50 ? 'bg-rose-50 text-rose-600' : 'bg-emerald-50 text-emerald-600'
+                        }`}>
+                          {activePollution.toFixed(0)}%
+                        </span>
+                      </td>
+                      <td className="p-3 text-slate-500">{distFacilities.length}기 가동</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Table summary note */}
+          <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-400 font-bold font-mono">
+            <span>DATABASE: GOV-CLOUD-STORAGE</span>
+            <span>TOTAL POWER ASSETS: {facilities.length} UNITS</span>
+          </div>
         </div>
 
       </div>
 
-      {/* Grid: Charts + Real-time Alerts */}
-      <div className="grid gap-6 lg:grid-cols-3">
-        
-        {/* District Chart Panel */}
-        <div className="lg:col-span-2 overflow-hidden rounded-2xl border border-slate-200/80 bg-white/70 p-6 flex flex-col justify-between backdrop-blur-md shadow-sm">
+      {/* 4. 실시간 시민 환경 민원 피드 (Unresolved Complaints live feed) */}
+      <div className="portal-card p-6">
+        <div className="pb-3 border-b border-slate-200 flex justify-between items-center mb-4">
           <div>
-            <div className="flex items-center space-x-2">
-              <Activity className="w-4 h-4 text-emerald-500" />
-              <h3 className="text-sm font-bold tracking-tight text-slate-800">구역별 에너지 생산 및 소비 분석</h3>
-            </div>
-            <p className="mt-1 text-[11px] text-slate-500 font-semibold">
-              A~E구역 가동 시설들의 전력 공급(발전)과 수요(소비)의 실시간 수급 밸런스 비교 현황입니다.
-            </p>
+            <h3 className="text-xs font-bold text-slate-400 font-mono tracking-wider uppercase">
+              REAL-TIME CIVIL COMPLAINTS RESPONDER
+            </h3>
+            <h4 className="text-base font-bold text-slate-800 mt-1">지자체 처리 중인 실시간 시민 민원</h4>
           </div>
+          <span className="text-[10px] text-rose-500 font-bold bg-rose-50 px-2 py-0.5 border border-rose-200 rounded-full animate-pulse">
+            미결 민원 {activeReports.length}건 대기 중
+          </span>
+        </div>
 
-          {/* Custom SVG/CSS Bar Chart Comparison */}
-          <div className="my-8 flex flex-col space-y-6">
-            {districtData.map((data) => {
-              const prodPercent = (data.production / maxChartVal) * 100;
-              const consPercent = (data.consumption / maxChartVal) * 100;
-
-              return (
-                <div key={data.name} className="space-y-1.5">
-                  <div className="flex items-center justify-between text-xs font-mono font-bold text-slate-700">
-                    <span>{data.name}</span>
-                    <span className="text-[10px] font-medium text-slate-500">
-                      생산: <span className="text-emerald-600 font-bold">{data.production}</span> / 소비: <span className="text-cyan-600 font-bold">{data.consumption}</span> MW
+        {activeReports.length === 0 ? (
+          <div className="py-12 flex flex-col items-center justify-center text-slate-400">
+            <ShieldCheck className="w-10 h-10 text-emerald-500 mb-2.5" />
+            <span className="text-xs font-bold text-slate-700">현재 미결 상태인 민원 사항이 없습니다.</span>
+            <span className="text-[10px] text-slate-400 mt-1">모든 위해 요인 조치 수립 완료</span>
+          </div>
+        ) : (
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {activeReports.slice(0, 3).map((rep) => (
+              <div 
+                key={rep.id} 
+                className="p-4 rounded-lg bg-slate-50 border border-slate-200 hover:border-slate-300 transition-colors flex flex-col justify-between"
+              >
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between gap-1">
+                    <span className="text-[9px] font-mono font-extrabold text-slate-400 tracking-wider">
+                      {rep.location} / {rep.type}
+                    </span>
+                    <span className="text-[10px] font-bold text-rose-600 bg-rose-50 border border-rose-200 px-2 py-0.2 rounded-full animate-pulse">
+                      {rep.status}
                     </span>
                   </div>
-                  
-                  {/* Two comparative bars */}
-                  <div className="space-y-1">
-                    {/* Production bar */}
-                    <div className="relative flex items-center h-2.5 w-full rounded-full bg-slate-100">
-                      <div 
-                        style={{ width: `${Math.max(2, prodPercent)}%` }}
-                        className="h-full rounded-full bg-gradient-to-r from-emerald-500/80 to-emerald-400 shadow-sm transition-all duration-700 ease-out" 
-                      />
-                    </div>
-                    {/* Consumption bar */}
-                    <div className="relative flex items-center h-2.5 w-full rounded-full bg-slate-100">
-                      <div 
-                        style={{ width: `${Math.max(2, consPercent)}%` }}
-                        className="h-full rounded-full bg-gradient-to-r from-cyan-500/80 to-cyan-400 shadow-sm transition-all duration-700 ease-out" 
-                      />
-                    </div>
-                  </div>
+                  <h5 className="text-xs font-bold text-slate-800 leading-snug line-clamp-1">{rep.title}</h5>
+                  <p className="text-[11px] text-slate-500 font-semibold line-clamp-2 leading-relaxed">
+                    {rep.description}
+                  </p>
                 </div>
-              );
-            })}
-          </div>
 
-          {/* Chart Legends */}
-          <div className="flex items-center space-x-6 text-[11px] font-bold text-slate-400 font-mono">
-            <div className="flex items-center space-x-2">
-              <span className="h-2.5 w-6 rounded-full bg-gradient-to-r from-emerald-500 to-emerald-400" />
-              <span>에너지 생산량 (MW)</span>
-            </div>
-            <div className="flex items-center space-x-2">
-              <span className="h-2.5 w-6 rounded-full bg-gradient-to-r from-cyan-500 to-cyan-400" />
-              <span>에너지 소비량 (MW)</span>
-            </div>
-          </div>
-        </div>
-
-        {/* Real-time Alarm / Incident Feed */}
-        <div className="overflow-hidden rounded-2xl border border-slate-200/80 bg-white/70 p-6 flex flex-col backdrop-blur-md shadow-sm">
-          <div className="mb-4">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center space-x-2">
-                <AlertTriangle className="w-4 h-4 text-rose-500" />
-                <h3 className="text-sm font-bold tracking-tight text-slate-800">실시간 환경 알림 피드</h3>
-              </div>
-              <span className="inline-flex items-center rounded-full bg-rose-50 px-2 py-0.5 text-[10px] font-mono font-bold text-rose-600 border border-rose-200/50 animate-pulse">
-                ACTIVE
-              </span>
-            </div>
-            <p className="mt-1 text-[11px] text-slate-500 font-semibold">
-              시민들로부터 제보 및 접수된 최신 미완료 민원 사건입니다.
-            </p>
-          </div>
-
-          {/* Alarm list */}
-          <div className="flex-1 space-y-3.5 overflow-y-auto max-h-[280px] pr-1">
-            {activeAlerts.length === 0 ? (
-              <div className="flex flex-col items-center justify-center h-full text-slate-400 py-12">
-                <Award className="w-8 h-8 text-emerald-500 opacity-60 mb-2" />
-                <span className="text-xs font-bold">미해결 알림이 없습니다.</span>
-                <span className="text-[10px] mt-0.5 text-slate-400">완전 무공해 도시 수립 중</span>
-              </div>
-            ) : (
-              activeAlerts.map((report) => (
-                <div 
-                  key={report.id}
-                  className="flex items-start space-x-3 p-3 rounded-xl bg-slate-50 border border-slate-100 transition-all hover:bg-slate-100/50"
-                >
-                  <div className={`mt-1.5 flex-shrink-0 w-2 h-2 rounded-full ${
-                    report.status === '접수' ? 'bg-rose-500 shadow-[0_0_8px_rgba(244,63,94,0.4)]' : 'bg-amber-400 shadow-[0_0_8px_rgba(251,191,36,0.4)]'
-                  }`} />
-                  
-                  <div className="flex-1 min-w-0 space-y-1">
-                    <div className="flex items-center justify-between">
-                      <span className="inline-block text-[9px] font-mono font-bold tracking-wide uppercase px-1.5 py-0.5 rounded bg-white border border-slate-200 text-slate-500">
-                        {report.type}
-                      </span>
-                      <span className="text-[9px] font-mono text-slate-400">
-                        {report.location}
-                      </span>
-                    </div>
-                    <h4 className="text-xs font-bold text-slate-700 truncate">
-                      {report.title}
-                    </h4>
-                    <p className="text-[10px] text-slate-500 leading-normal line-clamp-2 font-medium">
-                      {report.description}
-                    </p>
-                  </div>
+                <div className="pt-3 border-t border-slate-200/60 mt-3 flex items-center justify-between text-[10px] text-slate-400 font-bold font-mono">
+                  <span>CIVIC ID: #{rep.id.slice(-4).toUpperCase()}</span>
+                  <span>{new Date(rep.createdAt).toLocaleDateString()}</span>
                 </div>
-              ))
-            )}
+              </div>
+            ))}
           </div>
-
-          {activeAlerts.length > 0 && (
-            <div className="mt-4 pt-3 border-t border-slate-100 text-center">
-              <p className="text-[10px] font-bold text-slate-400 font-mono flex items-center justify-center space-x-1 uppercase">
-                <span>Total open issues: {stats.unresolvedReports}</span>
-              </p>
-            </div>
-          )}
-
-        </div>
-
+        )}
       </div>
+
     </div>
   );
 };
