@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { useEcoCity } from '../context/EcoCityContext';
+import { useAuth } from '../context/AuthContext';
+import { dbService } from '../services/dbService';
 import type { TabType } from '../types';
-import { Clock, Database, ShieldAlert, BookOpen, Activity, Globe, Leaf, Compass } from 'lucide-react';
 
 interface HeaderProps {
   activeTab: TabType;
@@ -9,8 +9,9 @@ interface HeaderProps {
 }
 
 export const Header: React.FC<HeaderProps> = ({ activeTab, setActiveTab }) => {
-  const { isFirebase, stats } = useEcoCity();
+  const { user, isFirebase } = useAuth();
   const [time, setTime] = useState<string>('');
+  const [unresolvedCount, setUnresolvedCount] = useState<number>(0);
 
   // Digital clock update
   useEffect(() => {
@@ -30,137 +31,142 @@ export const Header: React.FC<HeaderProps> = ({ activeTab, setActiveTab }) => {
     return () => clearInterval(interval);
   }, []);
 
-  // Government portal navigation items
-  const menuItems: { id: TabType; label: string; icon: React.ReactNode }[] = [
-    { id: 'projectInfo', label: '서비스 개요', icon: <BookOpen className="w-4 h-4" /> },
-    { id: 'reportForm', label: '시민 민원 접수', icon: <ShieldAlert className="w-4 h-4" /> },
-    { id: 'dashboard', label: '통합 환경 현황판', icon: <Activity className="w-4 h-4" /> },
-    { id: 'map', label: '실시간 민원 지도', icon: <Compass className="w-4 h-4" /> },
-    { id: 'admin', label: '지자체 행정 조치실', icon: <Database className="w-4 h-4" /> },
-    { id: 'simulator', label: '에너지 시뮬레이터', icon: <Leaf className="w-4 h-4" /> },
-  ];
+  // Monitor unresolved reports for the badge notification
+  useEffect(() => {
+    const unsub = dbService.listenReports((data) => {
+      const pending = data.filter(r => r.status !== 'RESOLVED' && r.status !== 'REJECTED' && r.isMeaningful).length;
+      setUnresolvedCount(pending);
+    });
+    return () => unsub();
+  }, []);
+
+  // Custom menu items depending on current user login roles
+  const getMenuItems = () => {
+    if (!user) return [];
+
+    const items = [
+      { id: 'map' as TabType, label: '실시간 제보지도 🗺️' },
+      { id: 'reportForm' as TabType, label: '찰칵 간편신고 📸' },
+      { id: 'myReports' as TabType, label: '나의 보관함 📂' },
+      { id: 'ranking' as TabType, label: '기여 랭킹 🏆' },
+      { id: 'points' as TabType, label: '포인트숍 💚' },
+      { id: 'profile' as TabType, label: '마이페이지 👤' },
+    ];
+
+    // Only expose Admin panel to administrators
+    if (user.role === 'ADMIN') {
+      items.push({ id: 'admin' as TabType, label: '지자체 관제실 👷' });
+    }
+
+    return items;
+  };
+
+  const menuItems = getMenuItems();
 
   return (
-    <header className="w-full bg-white border-b border-slate-300">
+    <header className="w-full bg-white border-b border-slate-200">
       
-      {/* 1. 최상단 공식 정부 유틸리티 가이드 바 (Top Utility Bar) */}
-      <div className="w-full bg-[#111827] text-[11px] font-semibold text-slate-300 py-1.5 px-4 sm:px-6 lg:px-8 border-b border-slate-800">
-        <div className="mx-auto flex max-w-7xl justify-between items-center">
-          <div className="flex items-center space-x-2">
-            <span className="inline-block px-1 bg-slate-800 text-[10px] text-emerald-400 font-bold rounded">GOV</span>
-            <span>Republic of Korea · Municipal Environmental Response Service</span>
-          </div>
-          <div className="hidden sm:flex items-center space-x-4">
-            <span className="hover:text-white cursor-pointer transition-colors">Language: KR</span>
-            <span className="text-slate-600">|</span>
-            <span className="hover:text-white cursor-pointer transition-colors">Accessibility</span>
-            <span className="text-slate-600">|</span>
-            <span className="hover:text-white cursor-pointer transition-colors flex items-center space-x-1">
-              <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full inline-block" />
-              <span>Open Data Portal</span>
-            </span>
-          </div>
+      {/* 1. Top Government Utility Ribbon */}
+      <div className="w-full bg-[#111827] text-[10px] font-semibold text-slate-300 py-1.5 px-4 sm:px-6 lg:px-8 border-b border-slate-800 flex justify-between items-center font-mono">
+        <div className="flex items-center space-x-2">
+          <span className="inline-block px-1 bg-[#0284c7] text-[9px] text-white font-extrabold rounded">GOV</span>
+          <span>공공 통합 기후 에너지 시민 자율 관제 포털</span>
+        </div>
+        <div className="hidden sm:flex items-center space-x-4">
+          <span>KOREA STANDARD TIME (KST) : {time}</span>
+          <span className="text-slate-700">|</span>
+          <span className="flex items-center gap-1">
+            <span className={`w-1.5 h-1.5 rounded-full ${isFirebase ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500 animate-pulse'}`} />
+            <span>{isFirebase ? 'ACTIVE REAL-TIME SERVER' : 'LOCAL CACHE MODE'}</span>
+          </span>
         </div>
       </div>
 
-      {/* 2. 중앙 공식 기관 대국민 브랜드 타이틀 (Main Branding Area) */}
-      <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-4.5 flex flex-col md:flex-row items-center justify-between gap-4">
+      {/* 2. Main Portal Title & Live Points HUD */}
+      <div className="mx-auto max-w-6xl px-4 sm:px-6 lg:px-8 py-4 flex flex-col md:flex-row items-center justify-between gap-4">
         
-        {/* Emblem & Texts */}
+        {/* Brand Logo and Subtitle */}
         <div 
-          onClick={() => setActiveTab('projectInfo')}
-          className="flex items-center space-x-4 cursor-pointer select-none group"
+          onClick={() => setActiveTab('map')}
+          className="flex items-center space-x-3.5 cursor-pointer select-none group"
         >
-          {/* Circular Government Official Seal Emblem */}
-          <div className="flex items-center justify-center w-14 h-14 rounded-full border-2 border-[#003366] bg-[#f8fafc] shadow-sm relative group-hover:bg-slate-100 transition-colors">
-            <div className="w-11 h-11 rounded-full border border-dashed border-[#0284c7] flex items-center justify-center">
-              <Globe className="w-6 h-6 text-[#003366] stroke-[1.8]" />
-            </div>
-            <span className="absolute -bottom-1 right-0 bg-[#003366] text-[8px] font-bold text-white px-1 py-0.2 rounded-full border border-white">국가</span>
+          <div className="flex items-center justify-center w-12 h-12 rounded-2xl border-2 border-slate-900 bg-slate-50 relative group-hover:bg-slate-100 transition-all">
+            <span className="text-2xl">📸</span>
           </div>
 
           <div>
-            <span className="block text-[10px] font-mono font-extrabold tracking-widest text-slate-400 uppercase leading-none mb-1">
-              PUBLIC ENVIRONMENTAL DATA PLATFORM
+            <span className="block text-[9px] font-mono font-extrabold tracking-widest text-[#0284c7] uppercase leading-none">
+              MUNICIPAL CARBON REDUCTION PORTAL
             </span>
-            <h1 className="text-2xl font-bold tracking-tight text-[#0f172a] font-sans group-hover:text-[#0284c7] transition-colors leading-none flex items-center gap-1.5">
-              <span>시민 위치 기반 환경·에너지 신고 시스템</span>
-              <span className="text-xs font-mono font-bold text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">EcoCity v1.2</span>
+            <h1 className="text-lg font-black tracking-tight text-[#0f172a] mt-1 group-hover:text-emerald-600 transition-colors leading-none flex items-center gap-1.5">
+              <span>찰칵 (Chalkak)</span>
+              <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">CO2 CONTROL</span>
             </h1>
-            <p className="text-[11px] text-slate-500 font-bold mt-1.5">
-              GPS 사진 신고, 실시간 지도, 지자체 조치 관제를 통합한 대한민국 공공 서비스 포털
+            <p className="text-[10px] text-slate-400 font-bold mt-1 leading-none">
+              대구광역시 달성군 시민 환경 신고 및 에코 마일리지 관제 센터
             </p>
           </div>
         </div>
 
-        {/* Action Shortcuts + Digital Clock */}
-        <div className="flex items-center gap-3">
-          
-          {/* Live system clock with clock icon */}
-          <div className="flex items-center space-x-2 font-mono text-[#003366] bg-slate-50 px-3.5 py-2 rounded-lg border border-slate-200 text-xs font-bold shadow-sm">
-            <Clock className="w-4 h-4 text-[#0284c7] animate-pulse" />
-            <span>KST {time}</span>
-          </div>
-
-          {/* Shortcut 1: 현황 조회 */}
-          <button
-            onClick={() => setActiveTab('dashboard')}
-            className="px-4 py-2 text-xs font-bold text-slate-700 bg-white hover:bg-slate-50 border border-slate-300 rounded-lg shadow-sm active:scale-[0.98] transition-all"
-          >
-            현황 조회
-          </button>
-
-          {/* Shortcut 2: 신고 접수 */}
-          <button
-            onClick={() => setActiveTab('reportForm')}
-            className="px-4 py-2 text-xs font-bold text-white bg-[#003366] hover:bg-[#0a3054] rounded-lg shadow-sm active:scale-[0.98] transition-all"
-          >
-            민원 접수
-          </button>
-        </div>
-
-      </div>
-
-      {/* 3. 메인 네이비 내비게이션 바 (Solid Navy navigation menu bar) */}
-      <div className="w-full bg-[#0a3054] border-t border-slate-300">
-        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center h-12">
-            
-            <nav className="flex items-center space-x-1 h-full overflow-x-auto no-scrollbar">
-              {menuItems.map((item) => {
-                const isActive = activeTab === item.id;
-                return (
-                  <button
-                    key={item.id}
-                    onClick={() => setActiveTab(item.id)}
-                    className={`h-12 flex items-center space-x-2 px-5 text-xs font-bold whitespace-nowrap transition-all ${
-                      isActive
-                        ? 'bg-[#0284c7] text-white border-b-2 border-white'
-                        : 'text-slate-200 hover:text-white hover:bg-[#0f446e]'
-                    }`}
-                  >
-                    {item.icon}
-                    <span className="whitespace-nowrap">{item.label}</span>
-                  </button>
-                );
-              })}
-            </nav>
-
-            {/* Sync Cloud Telemetry Banner */}
-            <div className={`hidden md:flex items-center space-x-1.5 px-3 py-1.5 rounded text-[10px] font-bold font-mono border ${
-              isFirebase
-                ? 'bg-[#1e3a8a] text-[#60a5fa] border-blue-800'
-                : 'bg-amber-950 text-amber-300 border-amber-900'
-            }`}>
-              <span className={`w-1.5 h-1.5 rounded-full ${isFirebase ? 'bg-blue-400 animate-ping' : 'bg-amber-400 animate-pulse'}`} />
-              <span className="whitespace-nowrap">{isFirebase ? 'CLOUD DB CONNECTED' : 'LOCAL OFFLINE'}</span>
-              <span className="text-slate-400">|</span>
-              <span className="text-emerald-400">ECO {stats.ecoScore}</span>
+        {/* User Auth Info HUD */}
+        {user && (
+          <div className="flex items-center gap-3 self-stretch md:self-auto justify-between bg-slate-50 p-2.5 px-4 rounded-2xl border border-slate-100/70">
+            <div className="text-left">
+              <span className="block text-[8px] text-slate-400 font-extrabold">AUTHENTICATED CITIZEN</span>
+              <span className="text-xs font-black text-slate-800 leading-tight">
+                {user.name} {user.role === 'ADMIN' ? '관리관' : '시민님'}
+              </span>
             </div>
+            <div className="h-6 w-px bg-slate-200" />
+            <div className="text-right">
+              <span className="block text-[8px] text-slate-400 font-extrabold">REDEEMABLE ENERGY</span>
+              <span className="text-xs font-black text-emerald-600 leading-tight">
+                {user.points} P
+              </span>
+            </div>
+          </div>
+        )}
+      </div>
 
+      {/* 3. Main Horizontal Menu bar (visible on Desktop / Tablet) */}
+      {user && menuItems.length > 0 && (
+        <div className="w-full bg-slate-900 border-t border-slate-800 hidden md:block">
+          <div className="mx-auto max-w-6xl px-4 sm:px-6 lg:px-8">
+            <div className="flex justify-between items-center h-11">
+              <nav className="flex items-center h-full">
+                {menuItems.map((item) => {
+                  const isActive = activeTab === item.id;
+                  return (
+                    <button
+                      key={item.id}
+                      onClick={() => setActiveTab(item.id)}
+                      className={`h-11 flex items-center px-5 text-[11px] font-extrabold transition-all relative ${
+                        isActive
+                          ? 'bg-emerald-600 text-white shadow-sm'
+                          : 'text-slate-300 hover:text-white hover:bg-slate-800'
+                      }`}
+                    >
+                      {item.label}
+                      
+                      {/* Notification dot on Admin tab for pending reviews */}
+                      {item.id === 'admin' && unresolvedCount > 0 && (
+                        <span className="absolute top-2 right-2 flex h-4 w-4 items-center justify-center rounded-full bg-rose-500 text-[8px] font-black text-white border border-slate-900">
+                          {unresolvedCount}
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
+              </nav>
+
+              <div className="text-[10px] text-emerald-400 font-bold font-mono uppercase flex items-center gap-1">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping" />
+                <span>CO2 TELEMETRY ONLINE</span>
+              </div>
+            </div>
           </div>
         </div>
-      </div>
+      )}
 
     </header>
   );
